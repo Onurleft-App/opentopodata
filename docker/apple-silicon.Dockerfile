@@ -8,6 +8,7 @@
 FROM ghcr.io/osgeo/gdal:ubuntu-full-3.6.4
 RUN python --version
 RUN set -e && \
+    rm -f /etc/apt/sources.list.d/apache-arrow.sources && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
         nginx \
