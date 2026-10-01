@@ -41,7 +41,16 @@ make build
 make run
 ```
 
-This will start an Open Topo Data server on `http://localhost:5000/`. Some extra steps might be needed for [Windows, M1/Apple Silicon, and Kubernetes](https://www.opentopodata.org/server/).
+This will start an Open Topo Data server on `http://localhost:5000/`.
+
+On M1/Apple Silicon (and other ARM machines), some geo dependencies don't have prebuilt wheels, so use the ARM image instead. It's larger and slower to build, but works the same:
+
+```bash
+make build-m1
+make run
+```
+
+Some extra steps might be needed for [Windows and Kubernetes](https://www.opentopodata.org/server/).
 
 
 Open Topo Data supports a wide range of raster file formats and tiling schemes, including most of those used by popular open elevation datasets. See the [server docs](https://www.opentopodata.org/server/) for more about configuration and adding datasets.
