@@ -142,6 +142,40 @@ Instructions are provided for adding the various datasets used in the public API
 
 
 
+## Downloading USGS tiles on request
+
+Open Topo Data can download [NED 10m](datasets/ned.md) tiles from USGS when a client asks for them, so you don't need to fetch every tile up front.
+
+```bash
+curl -X POST localhost:5000/tiles/ensure \
+    -H 'Content-Type: application/json' \
+    -d '{"tiles": ["n40w077", "n39w078"]}'
+```
+
+Tiles use USGS names, which give the tile's **north-west** corner: `n40w077` covers latitudes 39 to 40 and longitudes -77 to -76. The response comes back straight away with status `202`:
+
+```json
+{"status": "OK", "present": ["n39w078"], "queued": ["n40w077"], "no_data": []}
+```
+
+* `present`: the tile is already in the dataset folder.
+* `queued`: the tile will be downloaded in the background.
+* `no_data`: USGS has already said it has no tile there (for example open ocean), so it won't be requested again.
+
+A background process downloads queued tiles one at a time into the dataset folder, saving them under the same names as the [NED rename script](datasets/ned.md), like `USGS_13_n39w077_renamed.tif`. A download is only moved into place once it's complete. Failed downloads are retried after 30 seconds and 2 minutes. After a batch of downloads, Open Topo Data restarts itself to load the new tiles, which takes a few seconds. Until then, points in the new tiles return `null`, so clients should poll the elevation endpoint.
+
+`GET /tiles/status` shows the queue, the tile downloading now, pending retries, recent downloads and failures, and tiles USGS has no data for. Download progress is also written to the container logs.
+
+Configure the feature with environment variables, passed to `docker run` with `-e` (`make run` and `make daemon` pass them on from your shell):
+
+* `TILES_DATASET`: name of the dataset in `config.yaml` to download into. Its `path` is used as the folder, and it should have `filename_epsg: 4269`, as in the [NED instructions](datasets/ned.md). Default: `ned10m`.
+* `TILES_TOKEN`: if set, `/tiles/ensure` and `/tiles/status` require an `Authorization: Bearer <TILES_TOKEN>` header. Default: no token. Set one if the server can be reached by anyone other than your own services.
+* `TILES_MAX_PER_REQUEST`: requests with more tiles return a 400 error. Default: `20`.
+
+The `data` folder must be mounted **writable** for downloads to work. `make run` and `make daemon` do this. If you run `docker run` yourself, don't add `:ro` to the data volume. Each tile is 350 to 650 MB, so check you have the disk space.
+
+
+
 ## Kubernetes
 
 See [How to deploy on Kubernetes](notes/kubernetes.md) for details and config files for running on kubernetes.

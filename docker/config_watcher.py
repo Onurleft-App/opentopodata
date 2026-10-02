@@ -1,11 +1,12 @@
 import logging
 import time
 from pathlib import Path
-import subprocess
 import sys
 
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+
+from otd_reload import restart_otd
 
 
 # Paths.
@@ -28,38 +29,11 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 
-def run_cmd(cmd, shell=False):
-    r = subprocess.run(cmd, shell=shell, capture_output=True)
-    is_error = r.returncode != 0
-    stdout = r.stdout.decode("utf-8")
-    if is_error:
-        logger.error(f"Error running command, returncode: {r.returncode}")
-        logger.error("cmd:")
-        logger.error(" ".join(cmd))
-        if r.stdout:
-            logger.error("stdout:")
-            logger.error(stdout)
-        if r.stderr:
-            logger.error("stderr:")
-            logger.error(r.stderr.decode("utf-8"))
-        raise ValueError
-    return stdout
-
-
 def reload_config():
     global LAST_INVOCATION_TIME
     LAST_INVOCATION_TIME = time.time()
-    logger.info("Restarting OTD due to config change.")
-    run_cmd(["supervisorctl", "-c", "/app/docker/supervisord.conf", "stop", "uwsgi"])
-    run_cmd(
-        ["supervisorctl", "-c", "/app/docker/supervisord.conf", "restart", "memcached"]
-    )
-    run_cmd(["supervisorctl", "-c", "/app/docker/supervisord.conf", "start", "uwsgi"])
-    run_cmd(
-        ["supervisorctl", "-c", "/app/docker/supervisord.conf", "start", "warm_cache"]
-    )
+    restart_otd(logger, "config change")
     LAST_INVOCATION_TIME = time.time()
-    logger.info("Restarted OTD due to config change.")
 
 
 class Handler(FileSystemEventHandler):

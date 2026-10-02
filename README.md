@@ -52,6 +52,16 @@ make run
 
 Some extra steps might be needed for [Windows and Kubernetes](https://www.opentopodata.org/server/).
 
+### Downloading USGS tiles on request
+
+`POST /tiles/ensure` with a body like `{"tiles": ["n40w077"]}` queues USGS NED 10m tiles (named by their north-west corner) for download in the background, and returns `202` straight away. Once a tile is downloaded, Open Topo Data reloads itself and the tile's points start returning elevations. `GET /tiles/status` shows progress. The `data` folder must be mounted writable, which `make run` does. Configure the feature with these environment variables:
+
+* `TILES_DATASET`: dataset in `config.yaml` to download into. Default: `ned10m`.
+* `TILES_TOKEN`: if set, requests need an `Authorization: Bearer <token>` header.
+* `TILES_MAX_PER_REQUEST`: max tiles per request. Default: `20`.
+
+See the [server docs](docs/server.md#downloading-usgs-tiles-on-request) for details.
+
 
 Open Topo Data supports a wide range of raster file formats and tiling schemes, including most of those used by popular open elevation datasets. See the [server docs](https://www.opentopodata.org/server/) for more about configuration and adding datasets.
 
