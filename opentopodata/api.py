@@ -1,3 +1,4 @@
+import hmac
 import logging
 import os
 
@@ -5,7 +6,7 @@ from flask import Flask, jsonify, request, Response
 from flask_caching import Cache
 import polyline
 
-from opentopodata import backend, config, utils
+from opentopodata import backend, config, tiles, utils
 
 
 app = Flask(__name__)
@@ -112,6 +113,10 @@ class ClientError(ValueError):
     A 400 error should be raised. The error message should be safe to pass
     back to the client.
     """
+
+
+class AuthError(ValueError):
+    """Missing or wrong token. A 401 error should be raised."""
 
 
 def _find_request_argument(request, arg):
@@ -466,6 +471,128 @@ def _get_datasets(name):
         raise ConfigError("Datasets must be unique after resolving MultiDatasets.")
 
     return datasets
+
+
+def _check_tiles_token(request):
+    """Require 'Authorization: Bearer <TILES_TOKEN>' if a token is configured.
+
+    Raises:
+        AuthError: Token is missing or wrong.
+    """
+    expected = tiles.token()
+    if not expected:
+        return
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise AuthError("Missing 'Authorization: Bearer <token>' header.")
+    if not hmac.compare_digest(auth[len("Bearer ") :].encode(), expected.encode()):
+        raise AuthError("Invalid token.")
+
+
+def _parse_tile_names(request, max_n_tiles):
+    """Parse and validate the {"tiles": [...]} body of a /tiles/ensure request.
+
+    Args:
+        request: Flask request object.
+        max_n_tiles: The max allowable number of tiles.
+
+    Returns:
+        List of unique USGS tile names, in request order.
+
+    Raises:
+        ClientError: Invalid body.
+    """
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or "tiles" not in body:
+        raise ClientError('Body must be JSON like {"tiles": ["n39w077"]}.')
+
+    names = body["tiles"]
+    if not isinstance(names, list) or not names:
+        raise ClientError("'tiles' must be a non-empty list of tile names.")
+    if len(names) > max_n_tiles:
+        msg = f"Too many tiles requested ({len(names)}), the limit is {max_n_tiles}."
+        raise ClientError(msg)
+
+    for name in names:
+        if not tiles.is_valid_tile_name(name):
+            msg = f"Invalid tile name {name!r}."
+            msg += " Use USGS names for the north-west corner, like 'n39w077'."
+            raise ClientError(msg)
+
+    return list(dict.fromkeys(names))
+
+
+@app.route("/tiles/ensure", methods=["POST"])
+def ensure_tiles():
+    """Queue missing USGS tiles for download.
+
+    The downloads happen in docker/tile_downloader.py, not here. Clients poll
+    the elevation endpoint until the new tiles return values.
+    """
+    try:
+        _check_tiles_token(request)
+        names = _parse_tile_names(request, tiles.max_per_request())
+        folder = tiles.dataset_path(_load_config(), tiles.dataset_name())
+
+        spool = tiles.spool_dir()
+        known_no_data = set(tiles.read_state(spool).get("no_data", []))
+        corners = tiles.existing_corners(folder)
+        present, queued, no_data = [], [], []
+        for name in names:
+            if tiles.tile_corner(name) in corners:
+                present.append(name)
+            elif name in known_no_data:
+                no_data.append(name)
+            else:
+                queued.append(name)
+
+        tiles.queue_tiles(queued, spool)
+        data = {"status": "OK", "present": present, "queued": queued}
+        data["no_data"] = no_data
+        return jsonify(data), 202
+
+    except AuthError as e:
+        response = jsonify({"status": "INVALID_REQUEST", "error": str(e)})
+        response.headers["WWW-Authenticate"] = "Bearer"
+        return response, 401
+    except ClientError as e:
+        return jsonify({"status": "INVALID_REQUEST", "error": str(e)}), 400
+    except config.ConfigError as e:
+        return (
+            jsonify({"status": "SERVER_ERROR", "error": "Config Error: {}".format(e)}),
+            500,
+        )
+    except Exception as e:
+        if app.debug:
+            raise e
+        app.logger.error(e)
+        msg = "Unhandled server error, see server logs for details."
+        return jsonify({"status": "SERVER_ERROR", "error": msg}), 500
+
+
+@app.route("/tiles/status", methods=["GET", "HEAD"])
+def get_tiles_status():
+    """Progress of the tile downloader."""
+    try:
+        _check_tiles_token(request)
+    except AuthError as e:
+        response = jsonify({"status": "INVALID_REQUEST", "error": str(e)})
+        response.headers["WWW-Authenticate"] = "Bearer"
+        return response, 401
+
+    spool = tiles.spool_dir()
+    state = tiles.read_state(spool)
+    data = {
+        "status": "OK",
+        "queue": tiles.queued_tiles(spool),
+        "current": state.get("current"),
+        "retrying": state.get("retrying", {}),
+        "recent_downloads": state.get("recent_downloads", []),
+        "recent_failures": state.get("recent_failures", []),
+        "no_data": state.get("no_data", []),
+        "updated_at": state.get("updated_at"),
+    }
+    return jsonify(data)
 
 
 @app.route("/", methods=["GET", "POST", "HEAD"])

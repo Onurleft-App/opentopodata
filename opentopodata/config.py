@@ -14,7 +14,17 @@ from opentopodata import utils
 CONFIG_PATH = "config.yaml"
 EXAMPLE_CONFIG_PATH = "example-config.yaml"
 FILENAME_TILE_REGEX = r"^.*?([NS][\dx]+_?[WE][\dx]+).*?$"
-AUX_EXTENSIONS = [".tfw", ".aux", ".aux.xml", ".rdd", ".jpw", ".ovr", ".prj", ".tmp"]
+AUX_EXTENSIONS = [
+    ".tfw",
+    ".aux",
+    ".aux.xml",
+    ".rdd",
+    ".jpw",
+    ".ovr",
+    ".prj",
+    ".tmp",
+    ".part",  # In-progress tile downloads.
+]
 
 DEFAULTS = {
     "max_locations_per_request": 100,
