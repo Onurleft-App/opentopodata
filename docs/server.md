@@ -172,7 +172,40 @@ Configure the feature with environment variables, passed to `docker run` with `-
 * `TILES_TOKEN`: if set, `/tiles/ensure` and `/tiles/status` require an `Authorization: Bearer <TILES_TOKEN>` header. Default: no token. Set one if the server can be reached by anyone other than your own services.
 * `TILES_MAX_PER_REQUEST`: requests with more tiles return a 400 error. Default: `20`.
 
+While tiles are queued, downloading or waiting to retry, the [idle watcher](#going-to-sleep-when-idle-on-ecs) won't put the server to sleep.
+
 The `data` folder must be mounted **writable** for downloads to work. `make run` and `make daemon` do this. If you run `docker run` yourself, don't add `:ro` to the data volume. Each tile is 350 to 650 MB, so check you have the disk space.
+
+
+
+## Going to sleep when idle on ECS
+
+When Open Topo Data runs as an AWS ECS service that's woken up only when needed, it can put itself back to sleep: after a period with no requests, it sets its own service's desired task count to 0, and ECS stops the task. This is a backstop in case whatever woke the service doesn't scale it back down.
+
+Requests to `/v1/...` and `/tiles/...` count as activity. `/health` and `/datasets` don't, so load balancer health checks don't keep the server awake. The server also stays awake while tiles are queued, downloading or waiting to retry, while it's reloading, and for `IDLE_MINUTES` after it starts.
+
+Configure it with environment variables:
+
+* `IDLE_MINUTES`: minutes without requests before going to sleep. `0` turns this off. Default: `30`.
+* `ECS_CLUSTER` and `ECS_SERVICE`: the cluster and service this server runs as. If either is missing, the idle watcher logs that it's disabled and does nothing, which is the normal setup outside ECS.
+* `IDLE_CHECK_SECONDS`: how often to check. Default: `60`.
+
+AWS credentials and region come from the default AWS chain, which on ECS is the task role and the region ECS sets. The task role needs permission to update its own service, and nothing else:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": "ecs:UpdateService",
+            "Resource": "arn:aws:ecs:<region>:<account>:service/<cluster>/<service>"
+        }
+    ]
+}
+```
+
+If the call fails, for example because the permission is missing, the error is logged and retried at the next check.
 
 
 

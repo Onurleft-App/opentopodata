@@ -6,7 +6,7 @@ from flask import Flask, jsonify, request, Response
 from flask_caching import Cache
 import polyline
 
-from opentopodata import backend, config, tiles, utils
+from opentopodata import activity, backend, config, tiles, utils
 
 
 app = Flask(__name__)
@@ -76,6 +76,24 @@ def handle_preflight():
         response.headers["access-control-allow-methods"] = "GET,POST,OPTIONS,HEAD"
         response.headers["access-control-allow-headers"] = "content-type,x-api-key"
         return response
+
+
+# Requests that keep the server awake. /health isn't one: the load balancer
+# polls it, which would keep the server awake forever.
+ACTIVITY_PATH_PREFIXES = ("/v1/", "/tiles/")
+
+
+@app.before_request
+def record_activity():
+    """Record the time of real requests for docker/idle_watcher.py.
+
+    Registered after handle_preflight, so CORS preflights don't count.
+    """
+    if request.path.startswith(ACTIVITY_PATH_PREFIXES):
+        try:
+            activity.touch()
+        except Exception as e:
+            app.logger.warning(f"Unable to record request time: {e}")
 
 
 @app.after_request

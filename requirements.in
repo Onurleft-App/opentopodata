@@ -1,4 +1,5 @@
 black
+boto3  # Idle watcher scales the ECS service to 0.
 Flask>=2.2.2  # Flask 2.0 deprecations were enforced.
 flask-caching
 geographiclib

@@ -27,6 +27,17 @@ def run_cmd(cmd, logger, shell=False):
     return stdout
 
 
+def is_reloading():
+    """True while restart_otd() is running in any process."""
+    with open(LOCK_PATH, "a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        fcntl.flock(lock, fcntl.LOCK_UN)
+        return False
+
+
 def restart_otd(logger, reason):
     """Restart OTD so it re-reads the config and the dataset files.
 

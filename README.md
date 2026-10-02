@@ -62,6 +62,16 @@ Some extra steps might be needed for [Windows and Kubernetes](https://www.opento
 
 See the [server docs](docs/server.md#downloading-usgs-tiles-on-request) for details.
 
+### Going to sleep when idle on ECS
+
+When running as an AWS ECS service, Open Topo Data can scale its own service to 0 tasks after a period with no `/v1/...` or `/tiles/...` requests. It stays awake while tiles are downloading. It's off unless `ECS_CLUSTER` and `ECS_SERVICE` are set:
+
+* `IDLE_MINUTES`: minutes without requests before going to sleep. `0` turns it off. Default: `30`.
+* `ECS_CLUSTER` and `ECS_SERVICE`: this server's own ECS cluster and service.
+* `IDLE_CHECK_SECONDS`: how often to check. Default: `60`.
+
+The ECS task role needs `ecs:UpdateService` on `arn:aws:ecs:<region>:<account>:service/<cluster>/<service>`. See the [server docs](docs/server.md#going-to-sleep-when-idle-on-ecs) for details.
+
 
 Open Topo Data supports a wide range of raster file formats and tiling schemes, including most of those used by popular open elevation datasets. See the [server docs](https://www.opentopodata.org/server/) for more about configuration and adding datasets.
 
